@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whisky Label Scanner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Source+Sans+3:wght@300;400;600&display=swap');
+
+  :root {
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --dark: #1a1208;
+    --dark2: #241a0a;
+    --dark3: #2f2210;
+    --text: #f0e6d0;
+    --text-dim: #a0917a;
+    --border: rgba(201,168,76,0.25);
+    --green: #7ddc7d;
+    --red: #dc8080;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--dark);
+    color: var(--text);
+    font-family: 'Source Sans 3', sans-serif;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at 20% 50%, rgba(201,168,76,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 20%, rgba(201,168,76,0.03) 0%, transparent 50%);
+    pointer-events: none; z-index: 0;
+  }
+
+  .container { max-width: 1000px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  /* ── 헤더 ── */
+  header { padding: 48px 0 32px; text-align: center; border-bottom: 1px solid var(--border); margin-bottom: 40px; }
+  header .logo { font-size: 2.4rem; margin-bottom: 8px; }
+  header h1 { font-family: 'Playfair Display', serif; font-size: 2rem; color: var(--gold); letter-spacing: 0.08em; margin-bottom: 6px; }
+  header p { color: var(--text-dim); font-size: 0.9rem; font-weight: 300; }
+
+  /* ── 업로드 ── */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px; padding: 40px 24px; text-align: center;
+    cursor: pointer; transition: all 0.3s;
+    background: rgba(201,168,76,0.03); margin-bottom: 28px;
+  }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--gold); background: rgba(201,168,76,0.07); }
+  .upload-zone .icon { font-size: 2.8rem; margin-bottom: 12px; }
+  .upload-zone h3 { font-family: 'Playfair Display', serif; font-size: 1.1rem; color: var(--gold); margin-bottom: 6px; }
+  .upload-zone p { color: var(--text-dim); font-size: 0.85rem; }
+  #fileInput { display: none; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 26px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    color: var(--dark); border: none; border-radius: 6px;
+    font-family: 'Source Sans 3', sans-serif; font-size: 0.9rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; letter-spacing: 0.04em;
+  }
+  .btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* ── 미리보기 ── */
+  #preview-section { display: none; margin-bottom: 28px; }
+  #preview-section h3 { font-family: 'Playfair Display', serif; color: var(--gold); margin-bottom: 14px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.1em; }
+  .image-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .image-box { background: var(--dark2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .image-box .label { padding: 9px 14px; font-size: 0.75rem; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  .image-box img { width: 100%; display: block; max-height: 280px; object-fit: contain; background: #111; }
+
+  /* ── 로딩 ── */
+  #loading { display: none; text-align: center; padding: 40px; }
+  .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 14px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── 결과 레이아웃 ── */
+  #result-section { display: none; }
+
+  .result-layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  /* ── 왼쪽: 정보 카드 ── */
+  .info-card {
+    background: var(--dark2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .info-header {
+    padding: 18px 22px;
+    background: linear-gradient(135deg, rgba(201,168,76,0.15), rgba(201,168,76,0.05));
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  }
+
+  .info-header h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.6rem; color: var(--gold-light); line-height: 1.2;
+  }
+
+  .match-badge {
+    padding: 4px 12px; border-radius: 20px;
+    font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .match-badge.success { background: rgba(100,220,100,0.15); color: var(--green); border: 1px solid rgba(100,220,100,0.3); }
+  .match-badge.fail { background: rgba(220,100,100,0.15); color: var(--red); border: 1px solid rgba(220,100,100,0.3); }
+
+  .info-body { padding: 20px 22px; }
+
+  .meta-row {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 10px; font-size: 0.875rem; color: var(--text-dim);
+  }
+  .meta-row span { color: var(--text); }
+
+  .score-wrap { margin-top: 16px; }
+  .score-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  .score-bar { height: 5px; background: var(--dark3); border-radius: 3px; overflow: hidden; }
+  .score-bar-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-light)); border-radius: 3px; transition: width 1s ease; }
+
+  /* ── 오른쪽: 레이더 차트 ── */
+  .radar-card {
+    background: var(--dark2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex; flex-direction: column;
+  }
+
+  .radar-card h3 {
+    font-family: 'Playfair Display', serif;
+    color: var(--gold); font-size: 0.9rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-bottom: 16px; text-align: center;
+  }
+
+  .radar-chart-wrap {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 260px;
+  }
+
+  /* ── 수치 바 리스트 ── */
+  .score-list {
+    background: var(--dark2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-bottom: 20px;
+  }
+
+  .score-list h3 {
+    font-family: 'Playfair Display', serif;
+    color: var(--gold); font-size: 0.9rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-bottom: 16px;
+  }
+
+  .score-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+  }
+
+  .score-item { }
+  .score-item-top { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .score-item-label { font-size: 0.8rem; color: var(--text-dim); }
+  .score-item-val { font-size: 0.8rem; color: var(--gold); font-weight: 600; }
+  .score-item-bar { height: 4px; background: var(--dark3); border-radius: 2px; overflow: hidden; }
+  .score-item-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-light)); border-radius: 2px; transition: width 0.8s ease; }
+
+  /* ── 후보 / OCR ── */
+  .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px; }
+
+  .candidates, .ocr-section {
+    background: var(--dark2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px;
+  }
+
+  .candidates h4, .ocr-section h4 {
+    font-size: 0.75rem; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+  }
+
+  .candidate-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 0.85rem;
+  }
+  .candidate-item:last-child { border-bottom: none; }
+  .candidate-score { color: var(--gold); font-weight: 600; font-size: 0.8rem; }
+
+  .ocr-text {
+    font-family: 'Courier New', monospace; font-size: 0.82rem;
+    color: var(--text-dim); word-break: break-all; line-height: 1.5;
+  }
+
+  .error-box {
+    background: rgba(220,80,80,0.1); border: 1px solid rgba(220,80,80,0.3);
+    border-radius: 8px; padding: 16px 20px; color: var(--red); font-size: 0.9rem;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 700px) {
+    .result-layout { grid-template-columns: 1fr; }
+    .image-grid { grid-template-columns: 1fr; }
+    .bottom-row { grid-template-columns: 1fr; }
+    .score-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">🥃</div>
+    <h1>Whisky Label Scanner</h1>
+    <p>라벨 이미지 업로드 → OCR 인식 → Scotch Whisky Dataset 매칭 → 테이스팅 레이더 차트</p>
+  </header>
+
+  <!-- 업로드 -->
+  <div class="upload-zone" id="uploadZone">
+    <div class="icon">📷</div>
+    <h3>이미지를 드래그하거나 클릭하여 업로드</h3>
+    <p>위스키 병 라벨 사진 · JPG, PNG 지원</p>
+    <br>
+    <button class="btn" onclick="document.getElementById('fileInput').click()">📁 파일 선택</button>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+
+  <!-- 미리보기 -->
+  <div id="preview-section">
+    <h3>미리보기</h3>
+    <div class="image-grid">
+      <div class="image-box">
+        <div class="label">원본 이미지</div>
+        <img id="originalImg" src="" alt="원본">
+      </div>
+      <div class="image-box">
+        <div class="label">OCR 결과 (인식 영역)</div>
+        <img id="annotatedImg" src="" alt="OCR">
+      </div>
+    </div>
+    <br>
+    <button class="btn" id="scanBtn" onclick="scanImage()">🔍 스캔 시작</button>
+  </div>
+
+  <!-- 로딩 -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p style="color:var(--text-dim)">라벨 분석 중...</p>
+  </div>
+
+  <!-- 결과 -->
+  <div id="result-section"></div>
+</div>
+
+<script>
+  let currentFile = null;
+  let radarChart = null;
+
+  document.getElementById('fileInput').addEventListener('change', e => {
+    if (e.target.files[0]) loadFile(e.target.files[0]);
+  });
+
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+
+  function loadFile(file) {
+    currentFile = file;
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById('originalImg').src = e.target.result;
+      document.getElementById('annotatedImg').src = e.target.result;
+      document.getElementById('preview-section').style.display = 'block';
+      document.getElementById('result-section').style.display = 'none';
+      document.getElementById('result-section').innerHTML = '';
+      if (radarChart) { radarChart.destroy(); radarChart = null; }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function scanImage() {
+    if (!currentFile) return;
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('result-section').style.display = 'none';
+    document.getElementById('scanBtn').disabled = true;
+
+    const fd = new FormData();
+    fd.append('image', currentFile);
+
+    try {
+      const res = await fetch('/scan', { method: 'POST', body: fd });
+      const data = await res.json();
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('scanBtn').disabled = false;
+      if (data.annotated_image) document.getElementById('annotatedImg').src = data.annotated_image;
+      renderResult(data);
+    } catch (err) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('scanBtn').disabled = false;
+      renderError(err.message);
+    }
+  }
+
+  function renderResult(data) {
+    const section = document.getElementById('result-section');
+    section.style.display = 'block';
+    if (data.error) { section.innerHTML = `<div class="error-box">⚠️ ${data.error}</div>`; return; }
+
+    let html = '';
+
+    if (!data.matched) {
+      html += `
+        <div class="info-card" style="margin-bottom:20px">
+          <div class="info-header">
+            <h2>매칭 실패</h2>
+            <span class="match-badge fail">UNMATCHED</span>
+          </div>
+          <div class="info-body">
+            <p style="color:var(--text-dim)">라벨 텍스트를 인식하지 못했거나 Scotch Whisky Dataset에 해당 증류소가 없습니다.<br>더 선명한 이미지로 다시 시도해보세요.</p>
+          </div>
+        </div>`;
+    } else {
+      const w = data.whisky;
+      const score = Math.round(w.score * 100);
+
+      html += `
+        <div class="result-layout">
+          <!-- 왼쪽: 정보 -->
+          <div class="info-card">
+            <div class="info-header">
+              <div>
+                <h2>${w.name}</h2>
+                <div style="font-size:0.82rem;color:var(--text-dim);margin-top:4px">${w.region} · Single Malt Scotch</div>
+              </div>
+              <span class="match-badge success">MATCHED ${score}%</span>
+            </div>
+            <div class="info-body">
+              <div class="score-wrap">
+                <div class="score-label">매칭 신뢰도</div>
+                <div class="score-bar"><div class="score-bar-fill" id="matchBar" style="width:0%"></div></div>
+              </div>
+              <div style="margin-top:20px;font-size:0.85rem;color:var(--text-dim);line-height:1.7">
+                <strong style="color:var(--text)">Scotch Whisky Dataset</strong> 기반 테이스팅 프로파일.<br>
+                각 항목은 0~4점 척도로 전문 테이스터들의 평가를 수치화한 데이터입니다.
+              </div>
+            </div>
+          </div>
+
+          <!-- 오른쪽: 레이더 차트 -->
+          <div class="radar-card">
+            <h3>🕸 테이스팅 레이더</h3>
+            <div class="radar-chart-wrap">
+              <canvas id="radarCanvas" width="340" height="280"></canvas>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 수치 바 그리드
+      html += `<div class="score-list"><h3>📊 항목별 수치</h3><div class="score-grid" id="scoreGrid"></div></div>`;
+
+      // 후보 + OCR
+      html += `<div class="bottom-row">`;
+
+      if (data.candidates && data.candidates.length > 1) {
+        html += `<div class="candidates"><h4>🔍 매칭 후보</h4>`;
+        data.candidates.forEach((c, i) => {
+          html += `<div class="candidate-item"><span>${i === 0 ? '✅ ' : ''}${c.name}</span><span class="candidate-score">${Math.round(c.score*100)}%</span></div>`;
+        });
+        html += `</div>`;
+      } else {
+        html += `<div></div>`;
+      }
+
+      html += `<div class="ocr-section"><h4>📝 OCR 인식 텍스트</h4><div class="ocr-text">${data.ocr_text || '(없음)'}</div></div>`;
+      html += `</div>`;
+    }
+
+    section.innerHTML = html;
+
+    // 레이더 차트 & 수치 바 렌더링
+    if (data.matched) {
+      setTimeout(() => {
+        // 매칭 바 애니메이션
+        const bar = document.getElementById('matchBar');
+        if (bar) bar.style.width = Math.round(data.whisky.score * 100) + '%';
+
+        // 레이더 차트
+        drawRadar(data.whisky.tasting);
+
+        // 수치 바 그리드
+        drawScoreGrid(data.whisky.tasting);
+      }, 50);
+    }
+  }
+
+  function drawRadar(tasting) {
+    const ctx = document.getElementById('radarCanvas');
+    if (!ctx) return;
+    if (radarChart) radarChart.destroy();
+
+    radarChart = new Chart(ctx, {
+      type: 'radar',
+      data: {
+        labels: tasting.labels,
+        datasets: [{
+          label: '테이스팅 프로파일',
+          data: tasting.values,
+          backgroundColor: 'rgba(201, 168, 76, 0.2)',
+          borderColor: 'rgba(201, 168, 76, 0.9)',
+          pointBackgroundColor: 'rgba(232, 201, 122, 1)',
+          pointBorderColor: '#fff',
+          pointHoverBackgroundColor: '#fff',
+          pointHoverBorderColor: 'rgba(201, 168, 76, 1)',
+          borderWidth: 2,
+          pointRadius: 4,
+        }]
+      },
+      options: {
+        responsive: false,
+        scales: {
+          r: {
+            min: 0, max: 4,
+            ticks: {
+              stepSize: 1,
+              color: 'rgba(160,145,122,0.7)',
+              backdropColor: 'transparent',
+              font: { size: 9 }
+            },
+            grid: { color: 'rgba(201,168,76,0.15)' },
+            angleLines: { color: 'rgba(201,168,76,0.2)' },
+            pointLabels: {
+              color: '#f0e6d0',
+              font: { size: 11, family: "'Source Sans 3', sans-serif" }
+            }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(36,26,10,0.95)',
+            titleColor: '#c9a84c',
+            bodyColor: '#f0e6d0',
+            borderColor: 'rgba(201,168,76,0.4)',
+            borderWidth: 1,
+          }
+        },
+        animation: { duration: 800 }
+      }
+    });
+  }
+
+  function drawScoreGrid(tasting) {
+    const grid = document.getElementById('scoreGrid');
+    if (!grid) return;
+    let html = '';
+    tasting.labels.forEach((label, i) => {
+      const val = tasting.values[i];
+      const pct = (val / tasting.max) * 100;
+      html += `
+        <div class="score-item">
+          <div class="score-item-top">
+            <span class="score-item-label">${label}</span>
+            <span class="score-item-val">${val}/${tasting.max}</span>
+          </div>
+          <div class="score-item-bar">
+            <div class="score-item-fill" style="width:${pct}%"></div>
+          </div>
+        </div>
+      `;
+    });
+    grid.innerHTML = html;
+  }
+
+  function renderError(msg) {
+    const section = document.getElementById('result-section');
+    section.style.display = 'block';
+    section.innerHTML = `<div class="error-box">⚠️ ${msg}</div>`;
+  }
+</script>
+</body>
+</html>
